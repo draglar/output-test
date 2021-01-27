@@ -1,0 +1,147 @@
+---
+title: "R Notebook"
+author: eyan
+date: 23/01/2021
+output: rmarkdown::github_document
+---
+```{r}
+library('tidyverse')
+library('data.table')
+```
+```{r}
+url <- 'http://bit.ly/CarreFourDataset'
+sup_market <- read.csv(url)
+head(sup_market)
+```
+```{r}
+tail(sup_market)
+```
+```{r}
+colSums(is.na(sup_market))
+```
+No null values were found
+```{r}
+dim(sup_market)
+sup_market[duplicated(sup_market)]
+```
+No duplicates
+```{r}
+summary(sup_market)
+```
+
+# Reducing the number of features using PCA
+```{r pca}
+# importing the necessary library for PCA
+library('FactoMineR')
+library('ggbiplot')
+```
+```{r}
+label_encode <- function (column,dataframe){
+  data <- dataframe[[column]]
+  new_data <- as.integer(factor(data))
+  # print(new_data)
+  return (new_data)
+}
+supermarket.org <- sup_market[,-c(1,9,10)]
+
+```
+```{r}
+# Label encoding columns
+names_ <- c('Branch','Customer.type','Gender','Product.line','Payment')
+for(nm in names_){
+  supermarket.org[nm] <- label_encode(nm,supermarket.org)
+}
+supermarket <- supermarket.org
+head(supermarket)
+```
+```{r}
+# Geting the principle components from the supermarkets dataset.
+results <- prcomp(supermarket[,-c(10)], center = TRUE, scale. = TRUE)
+summary(results)
+```
+The first principal component has the largest proportion explaining 41% of the variance in the data.
+The first 9 components explain the all variance in the data, making the last 3 obsolete
+```{r}
+screeplot(results, type = "l", npcs = 13, main = "Screeplot of the first 12 Principal components")
+abline(h = 0.9, col="red", lty=5)
+```
+The first 9 principal components explain the most in the data, explainig 99% of the variance. These are the most important features in the dataset.
+
+```{r}
+ggbiplot(results,labels.size = 5, alpha = 0.5)
+```
+Unit price,gross income,tax and quantity contribute to PC1
+Payment,gender,Product line and customer type contribute to PC2
+```{r}
+clusters <- function (name,pc1=1,pc2=2){
+  cl_list <- factor(sup_market[[name]])
+  # species <- cl_list$species
+  ggbiplot(results,,choices=c(pc1,pc2),ellipse = TRUE,groups = cl_list, obs.scale = 1, var.scale = 1,labels.size = 5, alpha = 0.5)
+}
+clusters('Gender')
+```
+The clusters of the gender show:
+  Males are clustered at the top characterised by all features but the branch, while females are clustered at the bottom with unitprice,tax,gross income,rating and branch influencing their buying.
+```{r}
+clusters('Gender',3,4)
+```
+Since the 3rd and 4th princpal components explain lower variances than the first two, i doesnt do that good a job at showing the pattern shown in the previous plot. although it does give a hint on where the different genders lie.
+```{r}
+clusters('Gender',11,12)
+```
+The last 2 principle components perform even worse since they ecplain so little of the variance in the dataset.
+
+
+# Reducing the attributes using Feature Selection
+## Method 1 filter method: high correlation filter
+```{r}
+library('caret')
+library('corrplot')
+```
+```{r}
+supermarket_ <- supermarket.org[,-c(10)]
+corr_ <- cor(supermarket_)
+corr_
+```
+High correlations from tax,gross income ,cogs and total
+```{r}
+high_cor <- findCorrelation(corr_, cutoff=0.75)
+high_cor
+```
+
+```{r}
+# Removing the highly correlated features in index (9,12,7)
+final <- supermarket_[-high_cor]
+```
+```{r}
+# Plotting the correlations for comparison
+par(mfrow = c(1,2))
+corrplot(corr_, order = "hclust")
+corrplot(cor(final), order = "hclust")
+```
+Feature selection removes the most correlated features from the dataset in this case were left with 9 features that are not overly correlated
+
+## Method 2 : Wrapper Methods
+```{r}
+library('clustvarsel')
+library('mclust')
+```
+```{r}
+# Sequential forward greedy search using the default number of groups
+out <- clustvarsel(supermarket_)
+out
+```
+```{r}
+final2 <- supermarket_[,out$subset]
+head(final2)
+```
+Using clustvarsel 3 groups were taken as important in creating the clusters of the dataset
+```{r}
+mod <- Mclust(final2)
+summary(mod)
+```
+There were achieved 7 clusters in the selected subset of data
+```{r}
+plot(mod,c("classification"))
+```
+The unsupervised clustering shows 7 clusters from the 3 attributes selected
